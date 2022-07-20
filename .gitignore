@@ -1,0 +1,8 @@
+venv
+docker-compose.yml
+Dockerfile
+.env
+php_my_admin_db.db
+__pycache__
+.idea
+
