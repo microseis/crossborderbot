@@ -1,8 +1,8 @@
 venv
-docker-compose.yml
-Dockerfile
+docker-compose_deployment.yml
 .env
 php_my_admin_db.db
 __pycache__
 .idea
-
+Procfile
+runtime.txt

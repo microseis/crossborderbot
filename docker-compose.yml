@@ -1,0 +1,9 @@
+version: '2.2'
+
+services:
+  telegram:
+    build:
+      context: .
+    command: sh -c "python main.py"
+    volumes:
+      - ./files:/files
