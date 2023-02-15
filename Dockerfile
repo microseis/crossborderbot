@@ -10,6 +10,6 @@ RUN mkdir "/app"
 
 COPY . /app
 
-WORKDIR /app
+WORKDIR /app/bot
 
 CMD ["python", "main.py"]

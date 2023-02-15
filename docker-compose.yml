@@ -7,3 +7,4 @@ services:
     command: sh -c "python main.py"
     volumes:
       - ./files:/files
+    env_file: .env
