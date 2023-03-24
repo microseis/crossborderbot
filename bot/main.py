@@ -1,4 +1,3 @@
-import logging
 import os
 import os.path
 import re
@@ -7,28 +6,18 @@ from aiogram import Bot, Dispatcher, executor, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
+from config import link, tg_token
+from db_queries import DbQueries
+from logger import logging
 
-from db_querries import DbQueries
 from bot.keyboards import markup_created_acc, markup_new_user
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-
 storage = MemoryStorage()
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logging.basicConfig(
-    filename="app.log",
-    filemode="w",
-    format="%(asctime)s - %(message)s",
-    datefmt="%d-%b-%y %H:%M:%S",
-)
-
-bot = Bot(token=os.environ.get("TOKEN"))  # Initialize bot and dispatcher
-
+bot = Bot(tg_token)  # Initialize bot and dispatcher
 dp = Dispatcher(bot, storage=storage)
-
 db = DbQueries()  # соединение с БД
 
 
@@ -37,7 +26,8 @@ class Form(StatesGroup):
     create_pwd = State()
 
 
-async def savefile(message):
+async def savefile(message: types.Message) -> None:
+    """Метод сохранения файла"""
     file_id = message.document.file_id
     file = await bot.get_file(file_id)
     file_path = file.file_path
@@ -57,7 +47,7 @@ async def savefile(message):
 @dp.message_handler(commands=["start", "help"])
 async def send_welcome(message: types.Message):
     """
-    This handler will be called when user sends `/start` or `/help` command
+    Приветственное сообщение при вводе команд `/start` или `/help`
     """
     await message.reply(
         f"Hello {message.from_user.first_name} {message.from_user.last_name}!\n"
@@ -68,7 +58,8 @@ async def send_welcome(message: types.Message):
 
 
 @dp.callback_query_handler(text="create_account")
-async def process_callback_button1(call: types.CallbackQuery, state: FSMContext):
+async def process_create_account(call: types.CallbackQuery, state: FSMContext):
+    """Первый этап создания аккаунта. Получение названия аккаунта."""
     if not db.account_exist(int(call.from_user.id)):
         await call.message.reply("Please enter your account name below:", reply=False)
         await Form.create_acc.set()
@@ -81,6 +72,7 @@ async def process_callback_button1(call: types.CallbackQuery, state: FSMContext)
 
 @dp.message_handler(state=Form.create_acc)
 async def process_account(message: types.Message, state: FSMContext):
+    """Второй этап создания аккаунта. Получение пароля."""
     if re.match("^[A-Za-z0-9_-]*$", message.text):
         if not db.is_unique(message.text):
             async with state.proxy() as data:
@@ -89,8 +81,8 @@ async def process_account(message: types.Message, state: FSMContext):
             await Form.create_pwd.set()
     else:
         await message.answer(
-            "The account name is already taken or invalid. Please use only English "
-            "letters and digits. "
+            "The account name is already taken or invalid. "
+            "Please use only English letters and digits."
             "Try another account name:"
         )
         await Form.create_acc.set()
@@ -98,6 +90,7 @@ async def process_account(message: types.Message, state: FSMContext):
 
 @dp.message_handler(state=Form.create_pwd)
 async def process_pwd(message: types.Message, state: FSMContext):
+    """Третий этап создания аккаунта. Занесение данных пользователя в БД."""
     async with state.proxy() as data:
         data["account_passwd"] = message.text
         db.add_account(
@@ -110,15 +103,15 @@ async def process_pwd(message: types.Message, state: FSMContext):
 
 
 @dp.callback_query_handler(text="view_urls")
-async def process_callback_button2(call: types.CallbackQuery):
+async def process_view_urls(call: types.CallbackQuery):
+    """Просмотр персональных url-адресов."""
     if not db.account_exist(call.from_user.id):
         await call.message.answer("Please create an account first")
     else:
         acc_name = db.select_account_name(call.from_user.id)
-        link = os.environ.get("LINK")
         counter = db.select_counter(call.from_user.id)
         await call.message.reply(
-            f"Here are your own URLS\n\n"
+            "Here are your own URLS\n\n"
             f"url 1: {link}?id={acc_name}&type=Twitter\n"
             f"Number of clicks: {counter}",
             reply=False,
@@ -126,24 +119,24 @@ async def process_callback_button2(call: types.CallbackQuery):
 
 
 @dp.callback_query_handler(text="submit_work")
-async def process_callback_button3(call: types.CallbackQuery):
+async def process_submit_work(call: types.CallbackQuery):
+    """Предварительное сообщение перед отправкой работы."""
     if not db.account_exist(call.from_user.id):
         await call.message.answer("Please create an account first")
     else:
-        await call.message.reply(
-            "Please attach your work and click Send:", reply=False
-        )
+        await call.message.reply("Please attach your work and click Send:", reply=False)
 
 
 @dp.message_handler(content_types=["document"])
 async def handle_docs(message: types.Message):
-    fname = str(message.from_user.id) + "_" + str(message.document.file_name)
+    """Сохранение отправляемых документов."""
+    file_name = str(message.from_user.id) + "_" + str(message.document.file_name)
     if db.check_work(message.from_user.id):
         try:
             await savefile(message)
-            db.update_filename(fname, message.from_user.id)
+            db.update_filename(file_name, message.from_user.id)
             await message.answer("The file received. Thank you!")
-            print("The file " + fname + " is uploaded")
+            logging.info("The file %s is uploaded", file_name)
             db.update_work(message.from_user.id, status=True)
         except Exception as e:
             await message.answer(str(e))
@@ -151,16 +144,17 @@ async def handle_docs(message: types.Message):
         try:
             await savefile(message)
             await message.answer("The file received. Thank you!")
-            print("The first file " + str(fname) + " is uploaded")
+            logging.info("The first file %s is uploaded", file_name)
             db.update_work(message.from_user.id, status=True)
 
-            db.set_filename(fname, message.from_user.id)
+            db.set_filename(file_name, message.from_user.id)
         except Exception as e:
             await message.answer(str(e))
 
 
 @dp.callback_query_handler(text="approval_status")
-async def process_callback_button4(call: types.CallbackQuery):
+async def process_approval_status(call: types.CallbackQuery):
+    """Проверка статуса отправленных работ."""
     if not db.account_exist(call.from_user.id):
         await call.message.answer("Please create an account first")
     else:
@@ -171,9 +165,7 @@ async def process_callback_button4(call: types.CallbackQuery):
                 reply=False,
             )
         else:
-            await call.message.reply(
-                "You have not submitted any work yet", reply=False
-            )
+            await call.message.reply("You have not submitted any work yet", reply=False)
 
 
 if __name__ == "__main__":

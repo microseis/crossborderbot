@@ -1,7 +1,9 @@
-version: '2.2'
+version: '3'
 
 services:
   telegram:
+    container_name: bot
+    restart: unless-stopped
     build:
       context: .
     command: sh -c "python main.py"
